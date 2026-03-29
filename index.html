@@ -18,7 +18,7 @@ let width = canvas.width = window.innerWidth;
 let height = canvas.height = window.innerHeight;
 
 // --- CONFIG ---
-const blobCount = 20; // fewer blobs, larger size
+const blobCount = 30;
 const blobs = [];
 
 // --- BLOB CLASS ---
@@ -26,9 +26,9 @@ class Blob {
   constructor() {
     this.x = Math.random() * width;
     this.y = Math.random() * height;
-    this.vx = (Math.random() - 0.5) * 1; // slower for big blobs
-    this.vy = (Math.random() - 0.5) * 1;
-    this.radius = Math.max(width, height) * (0.15 + Math.random() * 0.1); // large to cover page
+    this.vx = (Math.random() - 0.5) * 2;
+    this.vy = (Math.random() - 0.5) * 2;
+    this.radius = 50 + Math.random() * 30;
   }
   move() {
     this.x += this.vx;
@@ -64,7 +64,7 @@ function animate(){
     for(let x=0; x<width; x+=2){
       const m = metaball(x, y);
       if(m > 1){
-        const alpha = Math.min(255, m*200); // stronger alpha for big blobs
+        const alpha = Math.min(255, m*150); // control transparency
         const index = (y*width + x)*4;
         data[index] = 255;   // R
         data[index+1] = 255; // G
@@ -85,10 +85,6 @@ animate();
 window.addEventListener('resize', () => {
   width = canvas.width = window.innerWidth;
   height = canvas.height = window.innerHeight;
-  // Increase radius on resize to still cover page
-  for(let b of blobs){
-    b.radius = Math.max(width, height) * (0.15 + Math.random() * 0.1);
-  }
 });
 </script>
 </body>
