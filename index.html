@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Crisp Fluid Blobs</title>
+<title>Crisp White Fluid Blobs</title>
 <style>
   body { margin: 0; overflow: hidden; background: #050510; }
   canvas { display: block; }
@@ -14,13 +14,13 @@
 <script>
 // --- THREE.JS SETUP ---
 const scene = new THREE.Scene();
-const camera = new THREE.Camera();
+const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1); // proper orthographic camera
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // --- CONFIG ---
-const blobCount = 20; // number of blobs
+const blobCount = 20;
 const blobs = [];
 
 // --- CREATE BLOBS ---
@@ -54,16 +54,17 @@ const material = new THREE.ShaderMaterial({
     }
 
     void main(){
-      vec2 uv = gl_FragCoord.xy / resolution * 2.0 - 1.0;
+      vec2 uv = gl_FragCoord.xy / resolution;        // 0 to 1
+      uv = uv * 2.0 - 1.0;                           // map to -1 to 1
       float total = 0.0;
 
-      for(int i=0;i<50;i++){
+      for(int i=0; i<50; i++){
         if(i >= blobCount) break;
         total += metaball(uv, blobsPos[i], blobsRadius[i]);
       }
 
-      float mask = smoothstep(1.0, 1.05, total); // sharper edge
-      gl_FragColor = vec4(vec3(1.0), mask); // pure white blobs
+      float mask = smoothstep(1.0, 1.05, total);     // crisp edge
+      gl_FragColor = vec4(vec3(1.0), mask);         // pure white
     }
   `,
   transparent: true,
@@ -80,7 +81,7 @@ function animate(){
   for(let i=0;i<blobCount;i++){
     blobs[i].pos.add(blobs[i].vel);
 
-    // wall collision
+    // simple wall reflection
     if(blobs[i].pos.x > 1 || blobs[i].pos.x < -1) blobs[i].vel.x *= -1;
     if(blobs[i].pos.y > 1 || blobs[i].pos.y < -1) blobs[i].vel.y *= -1;
 
