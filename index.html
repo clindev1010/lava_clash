@@ -1,115 +1,94 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <style>
-    body { margin: 0; overflow: hidden; background: #050510; }
-    canvas { display: block; }
-  </style>
+<meta charset="UTF-8">
+<title>Fluid Blobs</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #050510; }
+  canvas { display: block; }
+</style>
 </head>
 <body>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-
+<canvas id="canvas"></canvas>
 <script>
-// --- THREE.JS SETUP ---
-const scene = new THREE.Scene();
-const camera = new THREE.Camera();
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(innerWidth, innerHeight);
-document.body.appendChild(renderer.domElement);
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let width = canvas.width = window.innerWidth;
+let height = canvas.height = window.innerHeight;
 
 // --- CONFIG ---
-const blobCount = 100;       // Increased to 100 blobs
-const speedMultiplier = 0.8; // Slightly faster for more dynamics
-
-// --- BLOB DATA ---
+const blobCount = 30;
 const blobs = [];
-for (let i = 0; i < blobCount; i++) {
-  blobs.push({
-    pos: new THREE.Vector2((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5),
-    vel: new THREE.Vector2((Math.random()-0.5)*0.004, (Math.random()-0.5)*0.004).multiplyScalar(speedMultiplier),
-    radius: 0.08 + Math.random()*0.12,
-    color: new THREE.Vector3(Math.random(), Math.random(), Math.random())
-  });
+
+// --- BLOB CLASS ---
+class Blob {
+  constructor() {
+    this.x = Math.random() * width;
+    this.y = Math.random() * height;
+    this.vx = (Math.random() - 0.5) * 2;
+    this.vy = (Math.random() - 0.5) * 2;
+    this.radius = 50 + Math.random() * 30;
+    this.color = `hsl(${Math.random()*360}, 80%, 60%)`;
+  }
+  move() {
+    this.x += this.vx;
+    this.y += this.vy;
+    if(this.x < 0 || this.x > width) this.vx *= -1;
+    if(this.y < 0 || this.y > height) this.vy *= -1;
+  }
 }
 
-// --- SHADER ---
-const geometry = new THREE.PlaneGeometry(2,2);
-const material = new THREE.ShaderMaterial({
-  uniforms: {
-    blobsPos: { value: new Array(blobCount).fill(new THREE.Vector2()) },
-    blobsRadius: { value: new Array(blobCount).fill(0) },
-    blobsColor: { value: new Array(blobCount).fill(new THREE.Vector3()) },
-    blobCount: { value: blobCount },
-    resolution: { value: new THREE.Vector2(innerWidth, innerHeight) }
-  },
-  fragmentShader: `
-    uniform vec2 blobsPos[150]; // max 150 blobs
-    uniform float blobsRadius[150];
-    uniform vec3 blobsColor[150];
-    uniform int blobCount;
-    uniform vec2 resolution;
+// --- CREATE BLOBS ---
+for(let i=0; i<blobCount; i++) blobs.push(new Blob());
 
-    float metaball(vec2 p, vec2 c, float r){
-      float d = length(p-c);
-      return r*r / (d*d + 0.0001);
-    }
-
-    void main(){
-      vec2 uv = gl_FragCoord.xy / resolution;
-      uv = uv * 2.0 - 1.0;
-
-      float total = 0.0;
-      vec3 color = vec3(0.0);
-
-      for(int i=0;i<150;i++){
-        if(i >= blobCount) break;
-        float m = metaball(uv, blobsPos[i], blobsRadius[i]);
-        total += m;
-        color += blobsColor[i]*m;
-      }
-
-      if(total > 0.0){
-        color /= total;
-      }
-
-      float mask = smoothstep(1.0, 1.5, total);
-      gl_FragColor = vec4(color*mask, mask);
-    }
-  `,
-  transparent: true,
-  depthWrite: false
-});
-const mesh = new THREE.Mesh(geometry, material);
-scene.add(mesh);
+// --- METABALL FUNCTION ---
+function metaball(x, y) {
+  let sum = 0;
+  for(let b of blobs){
+    const dx = x - b.x;
+    const dy = y - b.y;
+    sum += (b.radius*b.radius) / (dx*dx + dy*dy);
+  }
+  return sum;
+}
 
 // --- ANIMATION ---
 function animate(){
   requestAnimationFrame(animate);
+  ctx.clearRect(0,0,width,height);
 
-  for(let i=0;i<blobCount;i++){
-    blobs[i].pos.add(blobs[i].vel);
+  // Draw metaballs
+  const imgData = ctx.createImageData(width, height);
+  const data = imgData.data;
 
-    // Screen bounds collision
-    if(blobs[i].pos.x > 1 || blobs[i].pos.x < -1) blobs[i].vel.x *= -1;
-    if(blobs[i].pos.y > 1 || blobs[i].pos.y < -1) blobs[i].vel.y *= -1;
-
-    // Update uniforms only (skip pairwise collisions for performance)
-    material.uniforms.blobsPos.value[i] = blobs[i].pos;
-    material.uniforms.blobsRadius.value[i] = blobs[i].radius;
-    material.uniforms.blobsColor.value[i] = blobs[i].color;
+  for(let y=0; y<height; y+=2){
+    for(let x=0; x<width; x+=2){
+      const m = metaball(x, y);
+      if(m > 1){
+        const color = Math.min(255, m*100);
+        const index = (y*width + x)*4;
+        data[index] = color;       // Red
+        data[index+1] = color*0.8; // Green
+        data[index+2] = 255;       // Blue
+        data[index+3] = Math.min(255, m*150); // Alpha
+      }
+    }
   }
 
-  renderer.render(scene, camera);
+  ctx.putImageData(imgData, 0, 0);
+
+  // Move blobs
+  for(let b of blobs) b.move();
 }
+
 animate();
 
 // --- RESIZE HANDLING ---
-window.addEventListener("resize", () => {
-  renderer.setSize(innerWidth, innerHeight);
-  material.uniforms.resolution.value.set(innerWidth, innerHeight);
+window.addEventListener('resize', () => {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
 });
 </script>
-
 </body>
 </html>
