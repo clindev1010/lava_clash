@@ -2,76 +2,103 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Smooth White Fluid Blobs</title>
+<title>Crisp Fluid Blobs</title>
 <style>
   body { margin: 0; overflow: hidden; background: #050510; }
   canvas { display: block; }
 </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
-<script>
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
 
-let width = canvas.width = window.innerWidth;
-let height = canvas.height = window.innerHeight;
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+// --- THREE.JS SETUP ---
+const scene = new THREE.Scene();
+const camera = new THREE.Camera();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
 // --- CONFIG ---
-const blobCount = 20; // fewer blobs for large smooth shapes
+const blobCount = 20; // number of blobs
 const blobs = [];
 
-// --- BLOB CLASS ---
-class Blob {
-  constructor() {
-    this.x = Math.random() * width;
-    this.y = Math.random() * height;
-    this.vx = (Math.random() - 0.5) * 1.5;
-    this.vy = (Math.random() - 0.5) * 1.5;
-    this.radius = Math.max(width, height) * (0.15 + Math.random() * 0.05); // large blobs
-  }
-  move() {
-    this.x += this.vx;
-    this.y += this.vy;
-    if(this.x < 0 || this.x > width) this.vx *= -1;
-    if(this.y < 0 || this.y > height) this.vy *= -1;
-  }
+// --- CREATE BLOBS ---
+for(let i=0; i<blobCount; i++){
+  blobs.push({
+    pos: new THREE.Vector2((Math.random()-0.5)*2, (Math.random()-0.5)*2),
+    vel: new THREE.Vector2((Math.random()-0.5)*0.01, (Math.random()-0.5)*0.01),
+    radius: 0.2 + Math.random()*0.1
+  });
 }
 
-// --- CREATE BLOBS ---
-for(let i=0; i<blobCount; i++) blobs.push(new Blob());
+// --- SHADER ---
+const geometry = new THREE.PlaneGeometry(2, 2);
+const material = new THREE.ShaderMaterial({
+  uniforms: {
+    blobsPos: { value: new Array(blobCount).fill(new THREE.Vector2()) },
+    blobsRadius: { value: new Array(blobCount).fill(0) },
+    blobCount: { value: blobCount },
+    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+  },
+  fragmentShader: `
+    precision highp float;
+    uniform vec2 blobsPos[50];
+    uniform float blobsRadius[50];
+    uniform int blobCount;
+    uniform vec2 resolution;
+
+    float metaball(vec2 p, vec2 c, float r){
+      float d = distance(p, c);
+      return r*r / (d*d + 0.0001);
+    }
+
+    void main(){
+      vec2 uv = gl_FragCoord.xy / resolution * 2.0 - 1.0;
+      float total = 0.0;
+
+      for(int i=0;i<50;i++){
+        if(i >= blobCount) break;
+        total += metaball(uv, blobsPos[i], blobsRadius[i]);
+      }
+
+      float mask = smoothstep(1.0, 1.05, total); // sharper edge
+      gl_FragColor = vec4(vec3(1.0), mask); // pure white blobs
+    }
+  `,
+  transparent: true,
+  depthWrite: false
+});
+
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
 
 // --- ANIMATION ---
-function animate() {
+function animate(){
   requestAnimationFrame(animate);
-  ctx.clearRect(0, 0, width, height);
 
-  // Draw blobs with additive blending
-  ctx.globalCompositeOperation = 'lighter';
-  for(let b of blobs){
-    const gradient = ctx.createRadialGradient(b.x, b.y, b.radius*0.3, b.x, b.y, b.radius);
-    gradient.addColorStop(0, 'rgba(255,255,255,1)');
-    gradient.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2);
-    ctx.fill();
+  for(let i=0;i<blobCount;i++){
+    blobs[i].pos.add(blobs[i].vel);
+
+    // wall collision
+    if(blobs[i].pos.x > 1 || blobs[i].pos.x < -1) blobs[i].vel.x *= -1;
+    if(blobs[i].pos.y > 1 || blobs[i].pos.y < -1) blobs[i].vel.y *= -1;
+
+    material.uniforms.blobsPos.value[i] = blobs[i].pos;
+    material.uniforms.blobsRadius.value[i] = blobs[i].radius;
   }
-  ctx.globalCompositeOperation = 'source-over';
 
-  for(let b of blobs) b.move();
+  renderer.render(scene, camera);
 }
 
 animate();
 
 // --- RESIZE ---
 window.addEventListener('resize', () => {
-  width = canvas.width = window.innerWidth;
-  height = canvas.height = window.innerHeight;
-  for(let b of blobs){
-    b.radius = Math.max(width, height) * (0.15 + Math.random() * 0.05);
-  }
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
 });
 </script>
+
 </body>
 </html>
