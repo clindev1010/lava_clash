@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Crisp White Fluid Blobs</title>
+<title>Full-Screen Crisp Fluid Blobs</title>
 <style>
   body { margin: 0; overflow: hidden; background: #050510; }
   canvas { display: block; }
@@ -14,26 +14,28 @@
 <script>
 // --- THREE.JS SETUP ---
 const scene = new THREE.Scene();
-const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1); // proper orthographic camera
+const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // --- CONFIG ---
-const blobCount = 20;
+const blobCount = 30;                  // more blobs for full coverage
 const blobs = [];
+const minRadius = 0.15;                // size relative to screen
+const maxRadius = 0.25;
 
 // --- CREATE BLOBS ---
-for(let i=0; i<blobCount; i++){
+for(let i=0;i<blobCount;i++){
   blobs.push({
     pos: new THREE.Vector2((Math.random()-0.5)*2, (Math.random()-0.5)*2),
-    vel: new THREE.Vector2((Math.random()-0.5)*0.01, (Math.random()-0.5)*0.01),
-    radius: 0.2 + Math.random()*0.1
+    vel: new THREE.Vector2((Math.random()-0.5)*0.008, (Math.random()-0.5)*0.008),
+    radius: minRadius + Math.random()*(maxRadius-minRadius)
   });
 }
 
 // --- SHADER ---
-const geometry = new THREE.PlaneGeometry(2, 2);
+const geometry = new THREE.PlaneGeometry(2,2);
 const material = new THREE.ShaderMaterial({
   uniforms: {
     blobsPos: { value: new Array(blobCount).fill(new THREE.Vector2()) },
@@ -54,17 +56,18 @@ const material = new THREE.ShaderMaterial({
     }
 
     void main(){
-      vec2 uv = gl_FragCoord.xy / resolution;        // 0 to 1
-      uv = uv * 2.0 - 1.0;                           // map to -1 to 1
-      float total = 0.0;
+      vec2 uv = gl_FragCoord.xy / resolution;
+      uv = uv * 2.0 - 1.0;  // map to -1..1
 
-      for(int i=0; i<50; i++){
+      float total = 0.0;
+      for(int i=0;i<50;i++){
         if(i >= blobCount) break;
         total += metaball(uv, blobsPos[i], blobsRadius[i]);
       }
 
-      float mask = smoothstep(1.0, 1.05, total);     // crisp edge
-      gl_FragColor = vec4(vec3(1.0), mask);         // pure white
+      // sharper edge for clear fluid look
+      float mask = smoothstep(1.0, 1.02, total);
+      gl_FragColor = vec4(vec3(1.0), mask); // pure white
     }
   `,
   transparent: true,
@@ -81,7 +84,7 @@ function animate(){
   for(let i=0;i<blobCount;i++){
     blobs[i].pos.add(blobs[i].vel);
 
-    // simple wall reflection
+    // bounce off walls
     if(blobs[i].pos.x > 1 || blobs[i].pos.x < -1) blobs[i].vel.x *= -1;
     if(blobs[i].pos.y > 1 || blobs[i].pos.y < -1) blobs[i].vel.y *= -1;
 
