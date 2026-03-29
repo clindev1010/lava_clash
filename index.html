@@ -11,106 +11,86 @@
 
 <script>
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-camera.position.z = 3;
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const camera = new THREE.Camera();
+const renderer = new THREE.WebGLRenderer();
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// PARTICLES
-const count = 8000;
-const positions = new Float32Array(count * 3);
+const geometry = new THREE.PlaneGeometry(2, 2);
 
-for (let i = 0; i < count * 3; i++) {
-  positions[i] = (Math.random() - 0.5) * 2;
-}
+// 👉 CHANGE COLORS HERE
+const colors = [
+  new THREE.Vector3(1.0, 0.2, 0.3), // red
+  new THREE.Vector3(0.2, 0.6, 1.0), // blue
+  new THREE.Vector3(0.3, 1.0, 0.5)  // green
+];
 
-const geometry = new THREE.BufferGeometry();
-geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-// MOUSE
-let mouse = new THREE.Vector2(0, 0);
-window.addEventListener("mousemove", e => {
-  mouse.x = (e.clientX / innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
-});
-
-// SHADER (fluid + merging)
 const material = new THREE.ShaderMaterial({
-  transparent: true,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
-
   uniforms: {
     time: { value: 0 },
-    mouse: { value: mouse }
+    resolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
+    color1: { value: colors[0] },
+    color2: { value: colors[1] },
+    color3: { value: colors[2] }
   },
 
-  vertexShader: `
-    uniform float time;
-    uniform vec2 mouse;
-
-    float noise(vec3 p){
-      return sin(p.x)*sin(p.y)*sin(p.z);
-    }
-
-    void main() {
-      vec3 pos = position;
-
-      // FLUID MOTION
-      float n = noise(pos + time);
-      pos += normalize(pos) * n * 0.3;
-
-      // MOUSE FORCE (attraction)
-      vec3 m = vec3(mouse * 2.0, 0.0);
-      float dist = length(pos.xy - m.xy);
-      pos.xy += (m.xy - pos.xy) * 0.02 / (dist + 0.1);
-
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-
-      // size grows when near center (merging illusion)
-      gl_PointSize = 4.0 + 6.0 / (dist + 0.2);
-    }
-  `,
-
   fragmentShader: `
+    uniform float time;
+    uniform vec2 resolution;
+    uniform vec3 color1;
+    uniform vec3 color2;
+    uniform vec3 color3;
+
+    float metaball(vec2 p, vec2 center) {
+      float d = length(p - center);
+      return 0.15 / (d * d);
+    }
+
     void main() {
-      float d = length(gl_PointCoord - vec2(0.5));
+      vec2 uv = gl_FragCoord.xy / resolution;
+      uv = uv * 2.0 - 1.0;
 
-      // soft circle
-      float alpha = smoothstep(0.5, 0.0, d);
+      // animated blob positions
+      vec2 c1 = vec2(sin(time*0.8)*0.5, cos(time*0.6)*0.5);
+      vec2 c2 = vec2(cos(time*1.1)*0.5, sin(time*0.9)*0.5);
+      vec2 c3 = vec2(sin(time*0.5)*0.6, cos(time*0.7)*0.6);
 
-      // metaball-like intensity
-      float intensity = 1.0 - d * 2.0;
+      float m1 = metaball(uv, c1);
+      float m2 = metaball(uv, c2);
+      float m3 = metaball(uv, c3);
 
-      vec3 color = vec3(0.1, 0.6, 1.0) * intensity;
+      float total = m1 + m2 + m3;
 
-      gl_FragColor = vec4(color, alpha);
+      // COLOR MIXING
+      vec3 color = (
+        color1 * m1 +
+        color2 * m2 +
+        color3 * m3
+      ) / total;
+
+      // smooth edge
+      float mask = smoothstep(0.8, 1.2, total);
+
+      gl_FragColor = vec4(color * mask, 1.0);
     }
   `
 });
 
-const particles = new THREE.Points(geometry, material);
-scene.add(particles);
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
 
-// ANIMATION
+// animation
 function animate() {
   requestAnimationFrame(animate);
-
   material.uniforms.time.value += 0.01;
-
-  particles.rotation.y += 0.001;
-
   renderer.render(scene, camera);
 }
 animate();
 
-// RESIZE
+// resize
 window.addEventListener("resize", () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  material.uniforms.resolution.value.set(innerWidth, innerHeight);
 });
 </script>
 
