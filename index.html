@@ -4,31 +4,43 @@
   <style>
     body { margin: 0; overflow: hidden; background: #050510; font-family: sans-serif; }
 
-    /* UI PANEL */
     #ui {
       position: fixed;
       bottom: 20px;
       left: 20px;
-      padding: 12px 16px;
-      border-radius: 12px;
+      padding: 14px;
+      border-radius: 14px;
       background: rgba(255,255,255,0.08);
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(12px);
       color: white;
-      font-size: 14px;
+      font-size: 13px;
+      line-height: 1.6;
     }
 
-    #ui input {
-      margin-right: 6px;
+    #ui input[type="color"] {
+      border: none;
+      width: 30px;
+      height: 20px;
+      padding: 0;
+    }
+
+    #ui label {
+      display: block;
+      margin-bottom: 4px;
     }
   </style>
 </head>
 <body>
 
 <div id="ui">
-  <label>
-    <input type="checkbox" id="mouseToggle" checked>
-    Enable Mouse Interaction
-  </label>
+  <label><input type="checkbox" id="mouseToggle" checked> Mouse Interaction</label>
+
+  <label>Color 1 <input type="color" id="c1" value="#66ccff"></label>
+  <label>Color 2 <input type="color" id="c2" value="#cc66ff"></label>
+  <label>Color 3 <input type="color" id="c3" value="#66ffcc"></label>
+
+  <label>Blobs <input type="range" id="blobCount" min="3" max="12" value="6"></label>
+  <label>Speed <input type="range" id="speed" min="0.2" max="3" step="0.1" value="1"></label>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
@@ -46,22 +58,46 @@ const geometry = new THREE.PlaneGeometry(2, 2);
 let mouse = new THREE.Vector2(0, 0);
 let useMouse = true;
 
-document.getElementById("mouseToggle").addEventListener("change", e => {
-  useMouse = e.target.checked;
-});
+document.getElementById("mouseToggle").onchange = e => useMouse = e.target.checked;
 
 window.addEventListener("mousemove", e => {
   mouse.x = (e.clientX / innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / innerHeight) * 2 + 1;
 });
 
-// COLORS (glass style)
+// color helper
+function hexToVec3(hex){
+  let r = parseInt(hex.substr(1,2),16)/255;
+  let g = parseInt(hex.substr(3,2),16)/255;
+  let b = parseInt(hex.substr(5,2),16)/255;
+  return new THREE.Vector3(r,g,b);
+}
+
+let color1 = hexToVec3("#66ccff");
+let color2 = hexToVec3("#cc66ff");
+let color3 = hexToVec3("#66ffcc");
+
+document.getElementById("c1").oninput = e => color1 = hexToVec3(e.target.value);
+document.getElementById("c2").oninput = e => color2 = hexToVec3(e.target.value);
+document.getElementById("c3").oninput = e => color3 = hexToVec3(e.target.value);
+
+let blobCount = 6;
+let speed = 1;
+
+document.getElementById("blobCount").oninput = e => blobCount = parseInt(e.target.value);
+document.getElementById("speed").oninput = e => speed = parseFloat(e.target.value);
+
+// shader
 const material = new THREE.ShaderMaterial({
   uniforms: {
     time: { value: 0 },
     resolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
     mouse: { value: mouse },
-    useMouse: { value: 1.0 }
+    useMouse: { value: 1.0 },
+    color1: { value: color1 },
+    color2: { value: color2 },
+    color3: { value: color3 },
+    blobCount: { value: blobCount }
   },
 
   fragmentShader: `
@@ -69,56 +105,64 @@ const material = new THREE.ShaderMaterial({
     uniform vec2 resolution;
     uniform vec2 mouse;
     uniform float useMouse;
+    uniform vec3 color1;
+    uniform vec3 color2;
+    uniform vec3 color3;
+    uniform int blobCount;
 
     float metaball(vec2 p, vec2 center) {
       float d = length(p - center);
-      return 0.25 / (d * d);
+      return 0.22 / (d * d);
     }
 
     void main() {
       vec2 uv = gl_FragCoord.xy / resolution;
       uv = uv * 2.0 - 1.0;
 
-      // BLOBS (more of them)
-      vec2 c1 = vec2(sin(time*0.8)*0.5, cos(time*0.6)*0.5);
-      vec2 c2 = vec2(cos(time*1.1)*0.5, sin(time*0.9)*0.5);
-      vec2 c3 = vec2(sin(time*0.5)*0.6, cos(time*0.7)*0.6);
-      vec2 c4 = vec2(cos(time*0.3)*0.7, sin(time*0.4)*0.7);
-      vec2 c5 = vec2(sin(time*1.3)*0.4, cos(time*1.0)*0.4);
+      float total = 0.0;
+      vec3 color = vec3(0.0);
 
-      // optional mouse blob
-      vec2 m = mouse * useMouse;
+      // DISTRIBUTED BLOBS
+      for(int i = 0; i < 20; i++) {
+        if(i >= blobCount) break;
 
-      float m1 = metaball(uv, c1);
-      float m2 = metaball(uv, c2);
-      float m3 = metaball(uv, c3);
-      float m4 = metaball(uv, c4);
-      float m5 = metaball(uv, c5);
-      float mm = metaball(uv, m);
+        float fi = float(i);
 
-      float total = m1+m2+m3+m4+m5 + mm;
+        // spread across screen evenly
+        float angle = fi * 2.399; // golden angle
+        float radius = 0.3 + fract(sin(fi*12.989)*43758.5453)*0.7;
 
-      // GLASS COLORS (soft gradients)
-      vec3 col1 = vec3(0.4, 0.7, 1.0);
-      vec3 col2 = vec3(0.7, 0.4, 1.0);
-      vec3 col3 = vec3(0.3, 1.0, 0.8);
+        vec2 center = vec2(
+          cos(angle + time*0.3*fi) * radius,
+          sin(angle + time*0.25*fi) * radius
+        );
 
-      vec3 color = (
-        col1 * (m1+m4) +
-        col2 * (m2+m5) +
-        col3 * (m3+mm)
-      ) / total;
+        float m = metaball(uv, center);
 
-      // GLASS SHADING
-      float edge = smoothstep(0.8, 1.2, total);
+        total += m;
 
-      // highlight (fake reflection)
-      float highlight = pow(edge, 8.0);
+        // assign colors cyclically
+        if(mod(fi,3.0)==0.0) color += color1 * m;
+        else if(mod(fi,3.0)==1.0) color += color2 * m;
+        else color += color3 * m;
+      }
 
-      // fresnel-like glow
-      float glow = smoothstep(0.6, 1.5, total);
+      // mouse blob
+      if(useMouse > 0.5){
+        float mm = metaball(uv, mouse);
+        total += mm;
+        color += color3 * mm;
+      }
 
-      vec3 finalColor = color * edge + highlight * 0.6 + glow * 0.2;
+      color /= total;
+
+      float edge = smoothstep(0.7, 1.2, total);
+
+      // GLASS EFFECT
+      float highlight = pow(edge, 10.0);
+      float glow = smoothstep(0.5, 1.5, total);
+
+      vec3 finalColor = color * edge + highlight * 0.7 + glow * 0.25;
 
       gl_FragColor = vec4(finalColor, edge);
     }
@@ -131,8 +175,14 @@ scene.add(mesh);
 // animation
 function animate() {
   requestAnimationFrame(animate);
-  material.uniforms.time.value += 0.01;
+
+  material.uniforms.time.value += 0.01 * speed;
   material.uniforms.useMouse.value = useMouse ? 1.0 : 0.0;
+  material.uniforms.color1.value = color1;
+  material.uniforms.color2.value = color2;
+  material.uniforms.color3.value = color3;
+  material.uniforms.blobCount.value = blobCount;
+
   renderer.render(scene, camera);
 }
 animate();
