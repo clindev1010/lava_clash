@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Fluid White Blobs</title>
+<title>Smooth White Fluid Blobs</title>
 <style>
   body { margin: 0; overflow: hidden; background: #050510; }
   canvas { display: block; }
@@ -18,7 +18,7 @@ let width = canvas.width = window.innerWidth;
 let height = canvas.height = window.innerHeight;
 
 // --- CONFIG ---
-const blobCount = 30;
+const blobCount = 20; // fewer blobs for large smooth shapes
 const blobs = [];
 
 // --- BLOB CLASS ---
@@ -26,9 +26,9 @@ class Blob {
   constructor() {
     this.x = Math.random() * width;
     this.y = Math.random() * height;
-    this.vx = (Math.random() - 0.5) * 2;
-    this.vy = (Math.random() - 0.5) * 2;
-    this.radius = 50 + Math.random() * 30;
+    this.vx = (Math.random() - 0.5) * 1.5;
+    this.vy = (Math.random() - 0.5) * 1.5;
+    this.radius = Math.max(width, height) * (0.15 + Math.random() * 0.05); // large blobs
   }
   move() {
     this.x += this.vx;
@@ -41,40 +41,23 @@ class Blob {
 // --- CREATE BLOBS ---
 for(let i=0; i<blobCount; i++) blobs.push(new Blob());
 
-// --- METABALL FUNCTION ---
-function metaball(x, y) {
-  let sum = 0;
-  for(let b of blobs){
-    const dx = x - b.x;
-    const dy = y - b.y;
-    sum += (b.radius*b.radius) / (dx*dx + dy*dy);
-  }
-  return sum;
-}
-
 // --- ANIMATION ---
-function animate(){
+function animate() {
   requestAnimationFrame(animate);
-  ctx.clearRect(0,0,width,height);
+  ctx.clearRect(0, 0, width, height);
 
-  const imgData = ctx.createImageData(width, height);
-  const data = imgData.data;
-
-  for(let y=0; y<height; y+=2){
-    for(let x=0; x<width; x+=2){
-      const m = metaball(x, y);
-      if(m > 1){
-        const alpha = Math.min(255, m*150); // control transparency
-        const index = (y*width + x)*4;
-        data[index] = 255;   // R
-        data[index+1] = 255; // G
-        data[index+2] = 255; // B
-        data[index+3] = alpha; // A
-      }
-    }
+  // Draw blobs with additive blending
+  ctx.globalCompositeOperation = 'lighter';
+  for(let b of blobs){
+    const gradient = ctx.createRadialGradient(b.x, b.y, b.radius*0.3, b.x, b.y, b.radius);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2);
+    ctx.fill();
   }
-
-  ctx.putImageData(imgData, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
 
   for(let b of blobs) b.move();
 }
@@ -85,6 +68,9 @@ animate();
 window.addEventListener('resize', () => {
   width = canvas.width = window.innerWidth;
   height = canvas.height = window.innerHeight;
+  for(let b of blobs){
+    b.radius = Math.max(width, height) * (0.15 + Math.random() * 0.05);
+  }
 });
 </script>
 </body>
