@@ -2,71 +2,55 @@
 <html>
 <head>
   <style>
-    body { margin: 0; overflow: hidden; background: #050510; font-family: sans-serif; }
-
-    #ui {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      padding: 14px;
-      border-radius: 14px;
-      background: rgba(255,255,255,0.08);
-      backdrop-filter: blur(12px);
-      color: white;
-      font-size: 13px;
-    }
+    body { margin: 0; overflow: hidden; background: #050510; }
   </style>
 </head>
 <body>
-
-<div id="ui">
-  <label><input type="checkbox" id="mouseToggle" checked> Mouse</label>
-</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
 <script>
 const scene = new THREE.Scene();
 const camera = new THREE.Camera();
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-const geometry = new THREE.PlaneGeometry(2, 2);
+// --- CONFIG ---
+const blobCount = 25; // more blobs
+const speedMultiplier = 0.7; // 30% slower
 
-// mouse
-let mouse = new THREE.Vector2(0, 0);
-let useMouse = true;
+// --- BLOB SETUP ---
+const blobs = [];
+for (let i = 0; i < blobCount; i++) {
+  blobs.push({
+    pos: new THREE.Vector2((Math.random()-0.5)*1.5, (Math.random()-0.5)*1.5),
+    vel: new THREE.Vector2((Math.random()-0.5)*0.004, (Math.random()-0.5)*0.004).multiplyScalar(speedMultiplier),
+    radius: 0.12 + Math.random()*0.08,
+    color: new THREE.Vector3(Math.random(), Math.random(), Math.random())
+  });
+}
 
-document.getElementById("mouseToggle").onchange = e => useMouse = e.target.checked;
-
-window.addEventListener("mousemove", e => {
-  mouse.x = (e.clientX / innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
-});
-
-// colors (INSIDE ONLY)
-const color1 = new THREE.Vector3(0.3, 0.7, 1.0);
-const color2 = new THREE.Vector3(0.8, 0.4, 1.0);
-const color3 = new THREE.Vector3(0.3, 1.0, 0.7);
-
+// --- SHADER ---
+const geometry = new THREE.PlaneGeometry(2,2);
 const material = new THREE.ShaderMaterial({
   uniforms: {
-    time: { value: 0 },
-    resolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
-    mouse: { value: mouse },
-    useMouse: { value: 1.0 }
+    blobsPos: { value: new Array(blobCount).fill(new THREE.Vector2()) },
+    blobsRadius: { value: new Array(blobCount).fill(0) },
+    blobsColor: { value: new Array(blobCount).fill(new THREE.Vector3()) },
+    blobCount: { value: blobCount },
+    resolution: { value: new THREE.Vector2(innerWidth, innerHeight) }
   },
-
   fragmentShader: `
-    uniform float time;
+    uniform vec2 blobsPos[50]; // max 50 blobs
+    uniform float blobsRadius[50];
+    uniform vec3 blobsColor[50];
+    uniform int blobCount;
     uniform vec2 resolution;
-    uniform vec2 mouse;
-    uniform float useMouse;
 
-    float metaball(vec2 p, vec2 c){
-      float d = length(p - c);
-      return 0.18 / (d*d);
+    float metaball(vec2 p, vec2 c, float r){
+      float d = length(p-c);
+      return r*r / (d*d + 0.0001);
     }
 
     void main(){
@@ -74,70 +58,60 @@ const material = new THREE.ShaderMaterial({
       uv = uv * 2.0 - 1.0;
 
       float total = 0.0;
-      vec3 col = vec3(0.0);
+      vec3 color = vec3(0.0);
 
-      // MULTIPLE BLOBS (spread)
-      for(int i=0;i<10;i++){
-        float fi = float(i);
-
-        float angle = fi * 2.4;
-        float radius = 0.4 + 0.4*sin(fi*3.1 + time*0.5);
-
-        vec2 center = vec2(
-          cos(angle + time*0.3*fi) * radius,
-          sin(angle + time*0.25*fi) * radius
-        );
-
-        float m = metaball(uv, center);
-
+      for(int i=0;i<50;i++){
+        if(i >= blobCount) break;
+        float m = metaball(uv, blobsPos[i], blobsRadius[i]);
         total += m;
-
-        if(mod(fi,3.0)==0.0) col += vec3(0.3,0.7,1.0)*m;
-        else if(mod(fi,3.0)==1.0) col += vec3(0.8,0.4,1.0)*m;
-        else col += vec3(0.3,1.0,0.7)*m;
+        color += blobsColor[i]*m;
       }
 
-      // mouse blob (optional)
-      if(useMouse > 0.5){
-        float mm = metaball(uv, mouse);
-        total += mm;
-        col += vec3(1.0,1.0,1.0)*mm;
-      }
-
-      // NORMALIZE COLOR
-      col /= total;
-
-      // 🔥 KEY CHANGE: HARD THRESHOLD
-      float shape = smoothstep(1.2, 1.4, total);
-
-      // sharp edge keeps blobs separate
-      float edge = smoothstep(1.1, 1.3, total);
-
-      // GLASS LOOK
-      float highlight = pow(edge, 12.0);
-      float glow = smoothstep(1.0, 1.6, total);
-
-      vec3 finalColor = col * shape + highlight * 0.6;
-
-      // 🚫 IMPORTANT: background stays clean
-      gl_FragColor = vec4(finalColor, shape);
+      color /= total;
+      float mask = smoothstep(1.0, 1.5, total);
+      gl_FragColor = vec4(color*mask, mask);
     }
-  `
+  `,
+  transparent: true,
+  depthWrite: false
 });
-
 const mesh = new THREE.Mesh(geometry, material);
 scene.add(mesh);
 
-// animate
+// --- ANIMATION ---
 function animate(){
   requestAnimationFrame(animate);
-  material.uniforms.time.value += 0.01;
-  material.uniforms.useMouse.value = useMouse ? 1.0 : 0.0;
+
+  for(let i=0;i<blobCount;i++){
+    blobs[i].pos.add(blobs[i].vel);
+
+    // wall collision
+    if(blobs[i].pos.x > 1 || blobs[i].pos.x < -1) blobs[i].vel.x *= -1;
+    if(blobs[i].pos.y > 1 || blobs[i].pos.y < -1) blobs[i].vel.y *= -1;
+
+    // blob collision
+    for(let j=i+1;j<blobCount;j++){
+      let diff = blobs[i].pos.clone().sub(blobs[j].pos);
+      let dist = diff.length();
+      let minDist = blobs[i].radius*0.5 + blobs[j].radius*0.5;
+      if(dist < minDist){
+        let push = diff.normalize().multiplyScalar(0.002*speedMultiplier);
+        blobs[i].vel.add(push);
+        blobs[j].vel.sub(push);
+      }
+    }
+
+    // update uniforms
+    material.uniforms.blobsPos.value[i] = blobs[i].pos;
+    material.uniforms.blobsRadius.value[i] = blobs[i].radius;
+    material.uniforms.blobsColor.value[i] = blobs[i].color;
+  }
+
   renderer.render(scene, camera);
 }
 animate();
 
-// resize
+// --- RESIZE ---
 window.addEventListener("resize", () => {
   renderer.setSize(innerWidth, innerHeight);
   material.uniforms.resolution.value.set(innerWidth, innerHeight);
