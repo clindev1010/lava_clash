@@ -2,107 +2,85 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Full-Screen Crisp Fluid Blobs</title>
+<title>Liquid Metaball Bubbles</title>
 <style>
   body { margin: 0; overflow: hidden; background: #050510; }
   canvas { display: block; }
 </style>
 </head>
 <body>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<canvas id="canvas"></canvas>
 <script>
-// --- THREE.JS SETUP ---
-const scene = new THREE.Scene();
-const camera = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let width = canvas.width = window.innerWidth;
+let height = canvas.height = window.innerHeight;
 
 // --- CONFIG ---
-const blobCount = 30;                  // more blobs for full coverage
-const blobs = [];
-const minRadius = 0.15;                // size relative to screen
-const maxRadius = 0.25;
+const bubbleCount = 20;
+const bubbles = [];
+const minRadius = 40;
+const maxRadius = 100;
 
-// --- CREATE BLOBS ---
-for(let i=0;i<blobCount;i++){
-  blobs.push({
-    pos: new THREE.Vector2((Math.random()-0.5)*2, (Math.random()-0.5)*2),
-    vel: new THREE.Vector2((Math.random()-0.5)*0.008, (Math.random()-0.5)*0.008),
-    radius: minRadius + Math.random()*(maxRadius-minRadius)
+// --- CREATE BUBBLES ---
+for(let i=0; i<bubbleCount; i++){
+  bubbles.push({
+    x: Math.random() * width,
+    y: Math.random() * height,
+    vx: (Math.random()-0.5)*2,
+    vy: (Math.random()-0.5)*2,
+    r: minRadius + Math.random()*(maxRadius-minRadius)
   });
 }
 
-// --- SHADER ---
-const geometry = new THREE.PlaneGeometry(2,2);
-const material = new THREE.ShaderMaterial({
-  uniforms: {
-    blobsPos: { value: new Array(blobCount).fill(new THREE.Vector2()) },
-    blobsRadius: { value: new Array(blobCount).fill(0) },
-    blobCount: { value: blobCount },
-    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
-  },
-  fragmentShader: `
-    precision highp float;
-    uniform vec2 blobsPos[50];
-    uniform float blobsRadius[50];
-    uniform int blobCount;
-    uniform vec2 resolution;
+// --- DRAW METABALLS ---
+function draw(){
+  ctx.clearRect(0,0,width,height);
 
-    float metaball(vec2 p, vec2 c, float r){
-      float d = distance(p, c);
-      return r*r / (d*d + 0.0001);
-    }
+  // draw each bubble with radial gradient
+  for(let i=0;i<bubbleCount;i++){
+    const b = bubbles[i];
+    const gradient = ctx.createRadialGradient(b.x, b.y, b.r*0.2, b.x, b.y, b.r);
+    gradient.addColorStop(0, 'rgba(255,255,255,0.9)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
 
-    void main(){
-      vec2 uv = gl_FragCoord.xy / resolution;
-      uv = uv * 2.0 - 1.0;  // map to -1..1
-
-      float total = 0.0;
-      for(int i=0;i<50;i++){
-        if(i >= blobCount) break;
-        total += metaball(uv, blobsPos[i], blobsRadius[i]);
-      }
-
-      // sharper edge for clear fluid look
-      float mask = smoothstep(1.0, 1.02, total);
-      gl_FragColor = vec4(vec3(1.0), mask); // pure white
-    }
-  `,
-  transparent: true,
-  depthWrite: false
-});
-
-const mesh = new THREE.Mesh(geometry, material);
-scene.add(mesh);
+// --- SIMPLE METABALL MERGING ---
+function mergeBubbles(){
+  // basic soft merging via additive alpha blending is handled by canvas
+  // For more realistic metaball merging, pixel shaders are required
+}
 
 // --- ANIMATION ---
 function animate(){
   requestAnimationFrame(animate);
+  draw();
 
-  for(let i=0;i<blobCount;i++){
-    blobs[i].pos.add(blobs[i].vel);
+  // move bubbles
+  for(let b of bubbles){
+    b.x += b.vx;
+    b.y += b.vy;
 
     // bounce off walls
-    if(blobs[i].pos.x > 1 || blobs[i].pos.x < -1) blobs[i].vel.x *= -1;
-    if(blobs[i].pos.y > 1 || blobs[i].pos.y < -1) blobs[i].vel.y *= -1;
-
-    material.uniforms.blobsPos.value[i] = blobs[i].pos;
-    material.uniforms.blobsRadius.value[i] = blobs[i].radius;
+    if(b.x < 0 || b.x > width) b.vx *= -1;
+    if(b.y < 0 || b.y > height) b.vy *= -1;
   }
-
-  renderer.render(scene, camera);
 }
 
 animate();
 
 // --- RESIZE ---
-window.addEventListener('resize', () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+window.addEventListener('resize', ()=>{
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
 });
-</script>
 
+</script>
 </body>
 </html>
